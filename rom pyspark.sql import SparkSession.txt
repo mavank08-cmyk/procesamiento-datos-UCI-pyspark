@@ -1,0 +1,132 @@
+rom pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .appName("AnalisisNivelesObesidad") \
+    .getOrCreate()
+
+ruta = "ObesityDataSet_raw_and_data_sinthetic.csv"
+
+df = spark.read.csv(
+    ruta,
+    header=True,
+    inferSchema=True
+)
+
+df.show(10, truncate=False)
+
+print("Total de registros:", df.count())
+print("Total de columnas:", len(df.columns))
+
+df.printSchema()
+
+print("Total de registros:", df.count())
+print("Total de columnas:", len(df.columns))
+
+df.show(10, truncate=False)
+
+from pyspark.sql.functions import col, sum, when
+
+df.select([
+    sum(when(col(c).isNull(), 1).otherwise(0)).alias(c)
+    for c in df.columns
+]).show(truncate=False)
+
+
+print("Registros originales:", df.count())
+print("Registros únicos:", df.dropDuplicates().count())
+
+df_limpio = df.dropDuplicates()
+
+print("Registros antes:", df.count())
+print("Registros después:", df_limpio.count())
+
+# Trasnformación de datos
+
+from pyspark.sql.functions import round
+
+df_transformado = df_limpio.withColumn(
+    "IMC",
+    round(col("Weight") / (col("Height") * col("Height")), 2)
+)
+
+df_transformado.select(
+    "Gender", "Age", "Height", "Weight", "IMC", "NObeyesdad"
+).show(10, truncate=False)
+
+df_transformado.describe(
+    "Age", "Height", "Weight", "IMC"
+).show()
+
+df_transformado.groupBy("NObeyesdad") \
+    .count() \
+    .orderBy("count", ascending=False) \
+    .show(truncate=False)
+
+from pyspark.sql.functions import avg, round, col
+
+df_transformado.groupBy("NObeyesdad").agg(
+    round(avg(col("IMC")), 2).alias("IMC_promedio")
+).show(truncate=False)
+
+
+df_transformado.groupBy("FAVC") \
+    .count() \
+    .show()
+
+
+import os
+
+os.makedirs("/home/vboxuser/fase3/resultados", exist_ok=True)
+
+
+# python3 -c "import matplotlib; print(matplotlib.__version__)"
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+salida = "/home/vboxuser/fase3/resultados"
+
+# Grafico 1: cantidad de registros por categoria
+categorias = df_transformado.groupBy("NObeyesdad") \
+    .count().orderBy("count", ascending=False).toPandas()
+
+plt.figure(figsize=(11, 6))
+plt.bar(categorias["NObeyesdad"], categorias["count"])
+plt.title("Distribucion de las categorias de obesidad")
+plt.xlabel("Categoria de obesidad")
+plt.ylabel("Numero de registros")
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+plt.savefig(salida + "/01_categorias_obesidad.png", dpi=150)
+plt.close()
+
+# Grafico 2: edad promedio por categoria
+edades = df_transformado.groupBy("NObeyesdad") \
+    .avg("Age").orderBy("NObeyesdad").toPandas()
+
+plt.figure(figsize=(11, 6))
+plt.bar(edades["NObeyesdad"], edades["avg(Age)"])
+plt.title("Edad promedio por categoria de obesidad")
+plt.xlabel("Categoria de obesidad")
+plt.ylabel("Edad promedio")
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+plt.savefig(salida + "/02_edad_promedio.png", dpi=150)
+plt.close()
+
+# Grafico 3: IMC promedio por categoria
+imc = df_transformado.groupBy("NObeyesdad") \
+    .avg("IMC").orderBy("NObeyesdad").toPandas()
+
+plt.figure(figsize=(11, 6))
+plt.bar(imc["NObeyesdad"], imc["avg(IMC)"])
+plt.title("IMC promedio por categoria de obesidad")
+plt.xlabel("Categoria de obesidad")
+plt.ylabel("IMC promedio")
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+plt.savefig(salida + "/03_imc_promedio.png", dpi=150)
+plt.close()
+
+print("Graficos guardados correctamente en:", salida)
