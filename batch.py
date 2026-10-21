@@ -1,4 +1,4 @@
-rom pyspark.sql import SparkSession
+from pyspark.sql import SparkSession
 
 spark = SparkSession.builder \
     .appName("AnalisisNivelesObesidad") \
